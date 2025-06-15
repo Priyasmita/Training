@@ -1,0 +1,114 @@
+    @Value("${application.kafka.bootstrap-servers}")
+    private String bootstrapServers;
+
+    @Value("${application.kafka.consumer.group-id}")
+    private String groupId;
+
+    @Value("${application.kafka.consumer.auto-offset-reset}")
+    private String autoOffsetReset;
+
+    @Value("${application.kafka.consumer.enable-auto-commit}")
+    private boolean enableAutoCommit;
+
+    @Value("${application.kafka.oauth.client-id}")
+    private String oauthClientId;
+
+    @Value("${application.kafka.oauth.client-secret}")
+    private String oauthClientSecret;
+
+    @Value("${application.kafka.oauth.token-endpoint-uri}")
+    private String oauthTokenEndpoint;
+
+    @Value("${application.kafka.oauth.scope}")
+    private String oauthScope;
+
+    @Value("${application.kafka.schema-registry.url}")
+    private String schemaRegistryUrl;
+
+    @Value("${application.kafka.schema-registry.oauth.client-id}")
+    private String schemaRegistryOauthClientId;
+
+    @Value("${application.kafka.schema-registry.oauth.client-secret}")
+    private String schemaRegistryOauthClientSecret;
+
+    @Value("${application.kafka.schema-registry.oauth.token-endpoint-uri}")
+    private String schemaRegistryOauthTokenEndpoint;
+
+    @Value("${application.kafka.schema-registry.oauth.scope}")
+    private String schemaRegistryOauthScope;
+
+    @Bean
+    public ConsumerFactory<Object, Object> consumerFactory() {
+        logger.info("Configuring Kafka consumer factory");
+        
+        Map<String, Object> props = new HashMap<>();
+        
+        // Basic Kafka configuration
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, autoOffsetReset);
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, enableAutoCommit);
+        
+        // Security configuration
+        props.put(ConsumerConfig.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SASL_SSL.name);
+        props.put(SaslConfigs.SASL_MECHANISM, "OAUTHBEARER");
+        props.put(SaslConfigs.SASL_LOGIN_CALLBACK_HANDLER_CLASS, 
+                 "org.apache.kafka.common.security.oauthbearer.secured.OAuthBearerLoginCallbackHandler");
+        
+        // OAuth configuration for Kafka
+        String jaasConfig = String.format(
+            "org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required " +
+            "oauth.client.id=\"%s\" " +
+            "oauth.client.secret=\"%s\" " +
+            "oauth.token.endpoint.uri=\"%s\" " +
+            "oauth.scope=\"%s\";",
+            oauthClientId, oauthClientSecret, oauthTokenEndpoint, oauthScope
+        );
+        props.put(SaslConfigs.SASL_JAAS_CONFIG, jaasConfig);
+        
+        // Deserializer configuration
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, KafkaAvroDeserializer.class);
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaAvroDeserializer.class);
+        
+        // Schema Registry configuration
+        props.put(KafkaAvroDeserializerConfig.SCHEMA_REGISTRY_URL_CONFIG, schemaRegistryUrl);
+        props.put(KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG, true);
+        
+        // Schema Registry OAuth configuration
+        props.put("schema.registry.basic.auth.credentials.source", "USER_INFO");
+        props.put("schema.registry.basic.auth.user.info", 
+                 schemaRegistryOauthClientId + ":" + schemaRegistryOauthClientSecret);
+        
+        // Additional Schema Registry OAuth properties
+        props.put("schema.registry.oauth.client.id", schemaRegistryOauthClientId);
+        props.put("schema.registry.oauth.client.secret", schemaRegistryOauthClientSecret);
+        props.put("schema.registry.oauth.token.endpoint.uri", schemaRegistryOauthTokenEndpoint);
+        props.put("schema.registry.oauth.scope", schemaRegistryOauthScope);
+        
+        logger.info("Kafka consumer factory configured with bootstrap servers: {}", bootstrapServers);
+        return new DefaultKafkaConsumerFactory<>(props);
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<Object, Object> kafkaListenerContainerFactory() {
+        logger.info("Configuring Kafka listener container factory");
+        
+        ConcurrentKafkaListenerContainerFactory<Object, Object> factory = 
+                new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory());
+        
+        // Configure error handling
+        DefaultErrorHandler errorHandler = new DefaultErrorHandler(
+                (record, exception) -> {
+                    logger.error("Error processing record: {}", record, exception);
+                },
+                new FixedBackOff(5000L, 3)
+        );
+        factory.setCommonErrorHandler(errorHandler);
+        
+        // Configure acknowledgment mode
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
+        
+        logger.info("Kafka listener container factory configured");
+        return factory;
+    }
