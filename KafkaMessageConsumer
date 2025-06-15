@@ -1,0 +1,42 @@
+package au.com.test.kafka.springbootkafkaconsumeravro;
+
+import org.apache.avro.generic.GenericRecord; // Import GenericRecord
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.stereotype.Service;
+
+@Service
+public class KafkaMessageConsumer {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(KafkaMessageConsumer.class);
+
+    @KafkaListener(topics = "avro-topic", groupId = "avro-consumer-group")
+    public void consumeAvroMessage(ConsumerRecord<Object, Object> record) {
+        Object key = record.key();
+        Object value = record.value();
+
+        // Ensure key is a GenericRecord
+        if (key instanceof GenericRecord && value instanceof GenericRecord) {
+            GenericRecord keyRecord = (GenericRecord) key;
+            GenericRecord valueRecord = (GenericRecord) value;
+
+            /*Set<String> fieldNames = valueRecord.getSchema()
+                                                .getFields()
+                                                .stream()
+                                                .map(org.apache.avro.Schema.Field::name)
+                                                .collect(Collectors.toSet());*/
+
+          if (key != null && value != null) {
+  
+              String id = key.get("id") != null ? key.get("id").toString() : "N/A";
+              String fieldName = value.get("fieldName") != null ? value.get("fieldName").toString() : "N/A";
+  
+              LOGGER.info("Received Avro Message - Key ID: {}, Value Field Name: {}", id, fieldName);
+          } else {
+              LOGGER.warn("Received Avro message with null key or value. Key: {}, Value: {}", key, value);
+          }
+        }
+    }
+}
