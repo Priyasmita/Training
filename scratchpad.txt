@@ -1,4 +1,17 @@
-    @Value("${application.kafka.bootstrap-servers}")
+transforms=route
+transforms.route.type=io.debezium.transforms.ByLogicalTableRouter
+transforms.route.topic.regex=abc\.Db1\.dbo\.Table1
+transforms.route.topic.replacement=abc.mnop.qrst
+
+
+transforms=topicRename
+transforms.topicRename.type=org.apache.kafka.connect.transforms.RegexRouter
+transforms.topicRename.regex=abc\.Db1\.dbo\.Table1
+transforms.topicRename.replacement=abc.mnop.qrst
+
+
+
+@Value("${application.kafka.bootstrap-servers}")
     private String bootstrapServers;
 
     @Value("${application.kafka.consumer.group-id}")
